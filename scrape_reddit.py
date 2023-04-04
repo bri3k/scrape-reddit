@@ -2,46 +2,33 @@
 
 import requests
 import re
-import pprint
-import time
-import random
-import os 
 import sys
+import time
+import os
+
+numToScrape = 100
+verbose = False
 
 itemCount = 0
 successCount = 0
-missedCount = 0
+failedCount = 0
 errCount = 0
-sleepy = 0
-subreddit = ''
+
 cwd = os.getcwd()
-
-opts = [opt for opt in sys.argv[1:] if opt.startswith("-")]
-args = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
-
-if (len(args) == 1):
-	subreddit = args[0]
-else:
-	print("Too many args. Use one subreddit at a time.")
-	sys.exit()
-
-
-url = 'https://www.reddit.com/r/' + subreddit + '/top/.rss?t=all&limit=100'
 
 baseHeaders = {}
 baseHeaders['User-Agent']='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
 
-gifheaders = {}
-gifheaders['User-Agent']='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
+bearerHeaders = {}
+bearerHeaders['User-Agent']='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
 
-try:
-	bearerTokenFile = open('bearerToken.txt','r')
-	gifheaders['authorization']=bearerTokenFile.read()
-	bearerTokenFile.close()
-except:
-	print("No bearerToken.txt file found. Please retrieve the bearer token from chrome and insert it into the file.")
-	sys.exit()
+specificRE = '(?i)<name>\/u\/(?P<name>.*?)<\/name>.*?title=&quot;(?P<title>.*?)&quot;.*?a href=&quot;(?P<address>https{0,1}:\/\/(?P<site>(?:www\.){0,1}redgifs.com|(?:i\.){0,1}imgur.com|(?:i\.)redd.it|(?:i\.)reddituploads.com|(?:giant\.){0,1}gfycat.com).*?)&quot;&gt;'
+generalRE  = '(?i)a href=&quot;(.*?)&quot;&gt;'
+missingNameRE = '(?i)title=&quot;(?P<title>.*?)&quot;.*?a href=&quot;(?P<address>https{0,1}:\/\/(?P<site>(?:www\.){0,1}redgifs.com|(?:i\.){0,1}imgur.com|(?:i\.)redd.it|(?:i\.)reddituploads.com|(?:giant\.){0,1}gfycat.com).*?)&quot;&gt;'
+lastSlashRE = '.*\/(.*)'
 
+opts = [opt for opt in sys.argv[1:] if opt.startswith("-")]
+args = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
 
 def writeImageOut(filename, url, head=baseHeaders):
 	global sleepy, successCount
@@ -55,93 +42,128 @@ def writeImageOut(filename, url, head=baseHeaders):
 		fileHandle.write(requests.get(url, headers=head).content)
 		fileHandle.close()
 	else:
-		print("Already have image, skipping")
+		#print("Already have image, skipping")
 		sleepy = 0
 	successCount += 1
 	return
 
 
 
+#----------------- Start Main ------------------------
+if (len(args) == 1):
+	subreddit = args[0]
+	url = 'https://www.reddit.com/r/' + subreddit + '/top/.rss?t=all&limit=' + str(numToScrape)
+else:
+	print("Too many args. Use one subreddit at a time.")
+	sys.exit()
+
 try:
 	os.mkdir(cwd + '/' + subreddit)
 except FileExistsError:
-	print("Folder exists, reusing...")
+	if verbose: print("Folder exists, reusing...")
+
+try:
+	bearerTokenFile = open('bearerToken.txt','r')
+	bearerHeaders['authorization']=bearerTokenFile.read()
+	bearerTokenFile.close()
+except:
+	print("No bearerToken.txt file found. Please retrieve the bearer token from chrome and insert it into the file.")
+	sys.exit()
+
+#Grab RSS feed from reddit
+rawRSS = requests.get(url, headers=baseHeaders)
+
+#Seperate each entry into a list
+groupRSS = re.findall('<entry>.*?</entry>',rawRSS.text)
 
 
-
-page = requests.get(url, headers=baseHeaders)
-
-filter_re =  '<name>\/u\/(.*?)<\/name>.*?title=&quot;(.*?)&quot.*?('
-filter_re += 'https:\/\/gfycat.com\/.*?(?=&)|'
-filter_re += 'https:\/\/(?:www\.)*redgifs.com\/watch\/.*?(?=&)|'
-filter_re += 'https:\/\/i\.redd\.it\/(.*?)\.(jpg|png|gif)|'
-filter_re += 'https:\/\/i.imgur.com\/(.*?)\.(gifv|gif|png|jpg|jpeg))'
-
-links = re.findall(filter_re, page.text)
-#print('Webpage Size: ' + str(len(page.text)))
-#print(page.text)
-
-newHandle = open(cwd + '/' + subreddit + '/' + 'rawWeb.txt', 'w')
-newHandle.write(page.text)
-newHandle.close()
-
-missedImg = open(cwd + '/' + subreddit + '/' + '001-MissedImg.txt','w')
-missedImg.write("Missing Image Downloads from r/" + subreddit + "\r\n")
-
-#print(links)
-#print('\r\n')
-
-for x in links:
+#Run though each entry and extract the link. 
+#Specific regex for known link hosts
+#General regex for a hail mary capture
+for entry in groupRSS:
 	itemCount += 1
-	# print('Sleeping ' + str(sleepy) + ' seconds. Working on: ' + str(itemCount))
-	time.sleep(sleepy)
-	sleepy = random.randint(0,30) / 10
-
+	specificImg = re.search(specificRE, entry)
+	missingNameImg = re.search(missingNameRE, entry)
 	try:
-		if ('gfycat' in x[2]):
-			print('gfycat processing: ' + str(x))
-			gfycatRE = re.findall('https:\/\/(?:gfycat)\.com((?:\/watch\/|\/)(.*)|.*)',x[2])
-			if (gfycatRE):
-				initialRequest = requests.get('https://api.gfycat.com/v1/gfycats/' + gfycatRE[0][1] + '?views=yes&users=yes&niches=yes', headers=gifheaders)
-				if ('error' in initialRequest.text):
-					raise Exception(initialRequest.text)
-				finalRequest = re.findall('(?i)"hd":"(.*?' + gfycatRE[0][1] + '\.(.*?)\?.*?)"', initialRequest.text)[0]
-				writeImageOut(x[0] + ' - ' + x[1] + ' - ' + gfycatRE[0][1] + '.' + finalRequest[1], finalRequest[0], gifheaders)
-		elif ('redgifs' in x[2]):
-			print('redgif processing: ' + str(x))
-			redgifsRE = re.findall('.*\/(.*)',x[2])
-			if (redgifsRE):
-				initialRequest = requests.get('https://api.redgifs.com/v2/gifs/' + redgifsRE[0] + '?views=yes&users=yes&niches=yes', headers=gifheaders)
-				if ('error' in initialRequest.text):
-					raise Exception(initialRequest.text)
-				finalRequest = re.findall('(?i)"hd":"(.*?' + redgifsRE[0] + '\.(.*?)\?.*?)"', initialRequest.text)[0]
-				writeImageOut(x[0] + ' - ' + x[1] + ' - ' + redgifsRE[0] + '.' + finalRequest[1], finalRequest[0], gifheaders)
-		elif ('imgur' in x[2]):
-			print('imgur processing: ' + str(x))
-			if(x[6] in ['gif','jpg','png']):
-				writeImageOut(x[0] + ' - ' + x[1] + ' - ' + x[3] + x[5] + '.' + x[4] + x[6], x[2])
-			else:
-				imgurRE = re.findall('contentURL.*?content="(.*\/)(.*?)"', requests.get(x[2]).text)
-				if (imgurRE):
-					writeImageOut(x[0] + ' - ' + x[1] + ' - ' + imgurRE[0][1], imgurRE[0][0] + imgurRE[0][1])
-				else:
-					raise Exception("Unable to find imgur image. Likely gone forever. Returned " + requests.get(x[2]).text[0:5])
-		elif ('i.redd.it' in x[2]):
-			print('redd.it processing: ' + str(x))
-			writeImageOut(x[0] + ' - ' + x[1] + ' - ' + x[3] + x[5] + '.' + x[4] + x[6], x[2])
-		else:
-			print("Unknown site, skipping")
-			missedImg.write(x[2] + "\r\n")
-	except Exception as e:
-		print("*Failed writing   " + str(e))
-		errCount += 1
-		missedImg.write("*Failed writing " + x[2] + "\r\n")
-		missedImg.write("    " + str(e) + "\r\n")
-	print(' ')
 
-results = "\r\n" + str(successCount) + " successful captures out of " + str(itemCount) + ". " + str(errCount) + " errors.\r\n\r\n"
-print(results)
-missedImg.write(results)
-missedImg.close()
+		if (specificImg) or (missingNameImg):
+			if (specificImg): 
+				name = specificImg.group('name')
+			else:
+				name = 'Deleted'
+			title = missingNameImg.group('title')
+			address = missingNameImg.group('address')
+			site = missingNameImg.group('site')
+
+			#----------------------- Imgur Processor -----------------------
+			if ('imgur' in site):
+				if verbose: print(str(itemCount) + ') imgur processing: ' + address)
+				if (address[-3:] in ['gif','jpg','png']):
+					#No work needed, grab link as is
+					writeImageOut(name + ' - ' + title + ' - ' + re.search(lastSlashRE, address)[1], address)
+				elif (address[-4:] == 'gifv'):
+					#Just replace gifv with mp4 and download
+					writeImageOut(name + ' - ' + title + ' - ' + re.search(lastSlashRE + '\.gifv', address)[1] + '.mp4', address.replace('gifv','mp4'))
+				else:
+					#Grab webpage and scrape for links
+					code = requests.get(address).text
+					codeFound = re.findall('"(https:\/\/i\.imgur\.com.{7,40}?(?:jpg|png|mp4|jpeg|webm))"', code)
+					if (codeFound):
+						writeImageOut(name + ' - ' + title + ' - ' + re.search(lastSlashRE, codeFound[0])[1], codeFound[0])
+					else:
+						raise Exception('Unable to find imgur image by scraping. ')
+			
+			#----------------------- Redd.it Processor -----------------------
+			elif ('i.redd.it' in site):
+				if verbose: print(str(itemCount) + ') redd.it processing: ' + address)
+				#No work needed, grab link as is
+				writeImageOut(name + ' - ' + title + ' - ' + re.search(lastSlashRE, address)[1], address)
+
+			#----------------------- Redgifs Processor -----------------------
+			elif ('redgifs' in site):
+				if verbose: print(str(itemCount) + ') redgif processing: ' + address)
+				#Extact unique string from address
+				redgifsRE = re.findall(lastSlashRE, address)
+				if (redgifsRE):
+					#Use redgif API to get webpage with the real links
+					initialRequest = requests.get('https://api.redgifs.com/v2/gifs/' + redgifsRE[0] + '?views=yes&users=yes&niches=yes', headers=bearerHeaders)
+					if ('error' in initialRequest.text):
+						raise Exception(initialRequest.text)
+					#Process final page with real links
+					finalRequest = re.findall('(?i)"hd":"(.*?' + redgifsRE[0] + '\.(.*?)\?.*?)"', initialRequest.text)[0]
+					writeImageOut(name + ' - ' + title + ' - ' + redgifsRE[0] + '.' + finalRequest[1], finalRequest[0], bearerHeaders)
+
+			#----------------------- Gfycat Processor -----------------------
+			elif ('gfycat' in site):
+				if verbose: print(str(itemCount) + ') gfycat processing: ' + address)
+				gfycatRE = re.findall('https:\/\/(?:gfycat)\.com((?:\/watch\/|\/)(.*)|.*)', address)
+				if (gfycatRE):
+					initialRequest = requests.get('https://api.redgifs.com/v2/gifs/' + gfycatRE[0][1] + '?views=yes&users=yes&niches=yes', headers=bearerHeaders)
+					if ('error' in initialRequest.text):
+						raise Exception(initialRequest.text)
+					finalRequest = re.findall('(?i)"hd":"(.*?' + gfycatRE[0][1] + '\.(.*?)\?.*?)"', initialRequest.text)[0]
+					writeImageOut(name + ' - ' + title + ' - ' + gfycatRE[0][1] + '.' + finalRequest[1], finalRequest[0], bearerHeaders)
+
+			# ------------------- Catchall for no specific processor --------------------
+			else:
+				failedCount += 1
+				print('** ' + str(itemCount) + ') Skipping site:' + site + ' ' + address)
+
+		# ------------------- Unable to parse, grabbing all links --------------------
+		else:
+			failedCount += 1
+			#print(entry)
+			print('** ' + str(itemCount) + ') No match, showing all links:')
+			for allLinks in re.findall(generalRE, entry):
+				print('       ' + allLinks)
+
+	except Exception as e:
+		print('** ' + str(itemCount) + ') ' + address + ' failed writing:  ' + str(e))
+		errCount += 1
+
+
+
+print("Good " + str(successCount) + ". Failed " + str(failedCount) + ". Error " + str(errCount))
+print('Total entry found ' + str(itemCount) + '. done.')
 
 
