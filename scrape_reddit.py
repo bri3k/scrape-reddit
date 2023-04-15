@@ -70,6 +70,10 @@ class MissingDownload(Exception):
 	"Download not found"
 	pass
 
+class TokenDecodeError(Exception):
+	"Old/Bad bearer token"
+	pass
+
 #----------------- Start Main ------------------------
 if ('-v' in opts): verbose = True
 
@@ -156,7 +160,9 @@ for entry in groupRSS:
 				if (redgifsRE):
 					#Use redgif API to get webpage with the real links
 					initialRequest = requests.get('https://api.redgifs.com/v2/gifs/' + redgifsRE[0] + '?views=yes&users=yes&niches=yes', headers=bearerHeaders)
-					if ('error' in initialRequest.text):
+					if ('TokenDecodeError' in initialRequest.text):
+						raise TokenDecodeError(initialRequest.text)
+					elif ('error' in initialRequest.text):
 						raise MissingDownload(initialRequest.text)
 					#Process final page with real links
 					finalRequest = re.findall('(?i)"hd":"(.*?' + redgifsRE[0] + '\.(.*?)\?.*?)"', initialRequest.text)[0]
@@ -187,8 +193,11 @@ for entry in groupRSS:
 				print('       ' + allLinks)
 	except KeyboardInterrupt:
 		#Capture CTRL-C event and quit gracefully
-		print("\r\n")
-		sys.exit()
+		print(bFormat.FAIL +  "\r\nCTRL-C Break\r\n" + bFormat.ENDC)
+		break
+	except TokenDecodeError as e:
+		failedCount += 1
+		print(bFormat.WARNING + '** ' + bFormat.ENDC + str(itemCount) + ') ' + address + bFormat.WARNING + ' Bad/Old bearer token: ' + str(e) + bFormat.ENDC)
 	except MissingDownload as e:
 		failedCount += 1
 		print(bFormat.WARNING + '** ' + str(itemCount) + ') ' + address + ' missing media: ' + str(e) + bFormat.ENDC)
