@@ -1,4 +1,7 @@
 
+##Overview
+
+This python program goes to a reddit subreddit, grabs the top posts and downloads the media to the local drive.
 
 <!-- GETTING STARTED -->
 ## Getting Started
@@ -27,4 +30,12 @@ Scrape Redditis supported on Windows, Linux & OSX. The minimum python version re
 
 ### Usage
 
-scrape-reddit.py subreddit
+scrape-reddit_api.py subreddit
+or
+scrape-reddit_theeye.py subreddit
+
+### Options
+ -nX  Download X images from subreddit. Default to 100.
+ -v   Verbose output on console
+ -d   Debug output on console
+
