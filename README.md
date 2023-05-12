@@ -27,6 +27,17 @@ Scrape Redditis supported on Windows, Linux & OSX. The minimum python version re
    pip install -r requirements.txt 
    ```
 
+### Bearer Token
+redgifs and gfycat use a bearer token to prevent scraping. To get a bearer token do the following:
+
+1. Open a redgifs or gyfcat image in Chrome
+  * You can use this link [Wallpaper](https://fake.link.for.now)
+2. Bring up developer window
+
+3. Reload page
+
+4. Find bearer token
+
 ### Usage
 
 scrape-reddit_api.py subreddit
@@ -34,7 +45,7 @@ or
 scrape-reddit_theeye.py subreddit
 
 ### Options
- *-nX  Download X images from subreddit. Default to 100.
- *-v   Verbose output on console
- *-d   Debug output on console
+ * -nX  Download X images from subreddit. Default to 100.
+ * -v   Verbose output on console
+ * -d   Debug output on console
 
