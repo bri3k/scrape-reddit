@@ -1,9 +1,8 @@
 
-##Overview
+## Overview
 
 This python program goes to a reddit subreddit, grabs the top posts and downloads the media to the local drive.
 
-<!-- GETTING STARTED -->
 ## Getting Started
 
 To get a local copy up and running follow these simple steps.
@@ -35,7 +34,7 @@ or
 scrape-reddit_theeye.py subreddit
 
 ### Options
- -nX  Download X images from subreddit. Default to 100.
- -v   Verbose output on console
- -d   Debug output on console
+ *-nX  Download X images from subreddit. Default to 100.
+ *-v   Verbose output on console
+ *-d   Debug output on console
 
