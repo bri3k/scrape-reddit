@@ -2,10 +2,17 @@
 
 import json
 import datetime
-import requests
 import re, os, sys
 import time
 import zstandard
+
+try:
+    import requests
+except Exception as e:
+    print(e)
+    print('Missing required python modules. Please run the follow command in the same folder as the program.')
+    print('pip install -r requirements.txt')
+    sys.exit()
 
 lastSlashRE = '.*\/(.*)'
 subreddit = ''
@@ -40,6 +47,8 @@ for a in opts:
     if a[:2] == '-n': 
         try:
             toDownload = int(a[2:])
+            if toDownload > 100000 or toDownload < 1:
+                raise Exception;
         except Exception as e:
             print('Invalid value for download count.')
             sys.exit()
@@ -192,7 +201,13 @@ def gfycatProcessor(y):
 
 
 #------------ Grab data of posts, either locally or from the internet
-subreddit = args[0]
+
+try:
+    subreddit = args[0]
+except Exception as e:
+    print('Please enter a subreddit to download images from')
+    sys.exit()
+
 
 if (os.path.isfile(args[0] + '_submissions.zst')): 
     print('Found local copy of the-eye.eu zst file, using')
